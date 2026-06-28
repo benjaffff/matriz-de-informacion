@@ -83,25 +83,37 @@ def cargar_top_modelos():
 
 @st.cache_data
 def cargar_buses():
-    df_b = pd.read_excel("buses RD.xlsx")
-    # Limpiamos el nombre de la columna de cantidades (Usualmente 'Unnamed: 2' al importar)
-    if 'Unnamed: 2' in df_b.columns:
-        df_b = df_b.rename(columns={'Unnamed: 2': 'Unidades'})
+    # Intentamos cargar como Excel clásico o como el CSV mapeado de la investigación
+    try:
+        df_b = pd.read_excel("buses RD.xlsx")
+    except:
+        try:
+            df_b = pd.read_csv("buses RD.xlsx - Empezar la investigación.csv")
+        except:
+            return pd.DataFrame()
+            
+    # Mapeo posicional robusto: La tercera columna siempre representa la cantidad de unidades
+    if len(df_b.columns) > 2:
+        df_b = df_b.rename(columns={df_b.columns[2]: 'Unidades'})
         
-    # Extraemos solo los números de los kWh para calcular totales
+    df_b['Unidades'] = pd.to_numeric(df_b['Unidades'], errors='coerce').fillna(0)
+        
     def extraer_kwh(val):
         if pd.isna(val): return 0.0
-        # Busca el primer patrón numérico incluyendo decimales
         match = re.search(r'(\d+(?:\.\d+)?)', str(val)) 
         if match: return float(match.group(1))
         return 0.0
         
-    df_b['Capacidad kWh Num'] = df_b['Capacidad kWh'].apply(extraer_kwh)
-    # Calculamos la energía multiplicando capacidad por las unidades
-    df_b['MWh Totales'] = (df_b['Unidades'] * df_b['Capacidad kWh Num']) / 1000
+    if 'Capacidad kWh' in df_b.columns:
+        df_b['Capacidad kWh Num'] = df_b['Capacidad kWh'].apply(extraer_kwh)
+        df_b['MWh Totales'] = (df_b['Unidades'] * df_b['Capacidad kWh Num']) / 1000
+    else:
+        df_b['MWh Totales'] = 0.0
     
-    df_b['Química de la Batería'] = df_b['Química de la Batería'].astype(str).str.strip()
-    df_b['Fabricante Batería'] = df_b['Fabricante Batería'].astype(str).str.strip()
+    # Estandarización de textos y remoción de espacios
+    for col in ['Química de la Batería', 'Fabricante Batería', 'Marca', 'Modelo de Bus']:
+        if col in df_b.columns:
+            df_b[col] = df_b[col].astype(str).str.strip()
     return df_b
 
 # Carga segura de archivos
@@ -119,7 +131,6 @@ except: df_buses = pd.DataFrame()
 
 colores_tech = {'EV': '#00CC96', 'BEV': '#00CC96', 'PHEV': '#636EFA', 'HEV': '#EF553B'}
 
-
 # 3. Interfaz Principal
 tab_ventas, tab_tecnico, tab_catalogo, tab_insights, tab_ecosistema, tab_buses = st.tabs([
     "📈 Impacto Ventas", 
@@ -130,7 +141,7 @@ tab_ventas, tab_tecnico, tab_catalogo, tab_insights, tab_ecosistema, tab_buses =
     "🚌 RED Movilidad (Buses)"
 ])
 
-# --- PESTAÑA 1: VENTAS REALES POR PERIODO Y TECNOLOGÍA ---
+# --- PESTAÑA 1: VENTAS REALES ---
 with tab_ventas:
     st.header("Análisis de Ventas Reales")
     if not df_ventas.empty:
@@ -205,8 +216,7 @@ with tab_tecnico:
                     fig_bat.update_traces(marker_color=colores_tech[tipo_elegido], textposition='outside')
                     fig_bat.update_layout(xaxis_title="Modelos", yaxis_title="", height=max(350, len(conteo_bat)*40), margin=dict(l=0, r=20, t=20, b=20))
                     st.plotly_chart(fig_bat, use_container_width=True)
-                else:
-                    st.info("No hay datos de química legibles.")
+                else: st.info("No hay datos de química legibles.")
 
         with col_t2:
             st.markdown(f"**Distribución Detallada de Capacidad en {tipo_elegido}**")
@@ -258,7 +268,6 @@ with tab_tecnico:
                     energia_por_anio.append({'Año': anio, 'MWh Añadidos': mwh_total})
                     
             df_energia_tech = pd.DataFrame(energia_por_anio)
-            
             if not df_energia_tech.empty and df_energia_tech['MWh Añadidos'].sum() > 0:
                 fig_energia_tech = px.bar(df_energia_tech, x='Año', y='MWh Añadidos', text_auto='.1f', color_discrete_sequence=[colores_tech[tipo_elegido]])
                 fig_energia_tech.update_traces(textposition='outside')
@@ -282,13 +291,11 @@ with tab_tecnico:
                     
                     resumen_tipo = cruce_anio_all.groupby('Tipo')['MWh Añadidos'].sum().reset_index()
                     resumen_tipo['Año'] = anio
-                    
                     for _, row in resumen_tipo.iterrows():
                         if row['MWh Añadidos'] > 0:
                             energia_global.append({'Año': row['Año'], 'Tipo': row['Tipo'], 'MWh Añadidos': row['MWh Añadidos']})
                             
             df_energia_global = pd.DataFrame(energia_global)
-            
             if not df_energia_global.empty:
                 df_energia_global['Tipo'] = pd.Categorical(df_energia_global['Tipo'], categories=['EV', 'PHEV', 'HEV'], ordered=True)
                 df_energia_global = df_energia_global.sort_values(['Año', 'Tipo'])
@@ -298,12 +305,11 @@ with tab_tecnico:
                 fig_energia_global.update_layout(height=500, yaxis_title="MWh Totales Estimados", xaxis_title="Periodo")
                 st.plotly_chart(fig_energia_global, use_container_width=True)
 
-# --- PESTAÑA 3: CATÁLOGO CON EXPORTADOR ---
+# --- PESTAÑA 3: BUSCADOR ---
 with tab_catalogo:
     st.header("🗂️ Base de Datos Completa (3CV)")
     if not df_homologados.empty:
         df_mostrar = df_homologados.copy()
-        
         busqueda = st.text_input("🔍 Búsqueda rápida (ej: Ioniq 5, Kaufmann, Tesla...)")
         if busqueda: 
             df_mostrar = df_mostrar[df_mostrar.apply(lambda row: row.astype(str).str.contains(busqueda, case=False, na=False).any(), axis=1)]
@@ -342,7 +348,7 @@ with tab_catalogo:
         with tab_cat_phev: renderizar_catalogo(df_mostrar[df_mostrar['Tipo'] == 'PHEV'])
         with tab_cat_hev: renderizar_catalogo(df_mostrar[df_mostrar['Tipo'] == 'HEV'])
 
-# --- PESTAÑA 4: INSIGHTS ESTRATÉGICOS ---
+# --- PESTAÑA 4: INSIGHTS ---
 with tab_insights:
     st.header("🧠 Cruce de Homologaciones vs Ventas")
     if not df_ventas.empty and not df_homologados.empty:
@@ -359,7 +365,7 @@ with tab_insights:
         fig_scatter.update_layout(height=600, showlegend=False)
         st.plotly_chart(fig_scatter, use_container_width=True)
 
-# --- PESTAÑA 5: ECOSISTEMA DE BATERÍAS Y ARQUITECTURA DE VOLTAJE ---
+# --- PESTAÑA 5: ECOSISTEMA AUTOMOTRIZ ---
 with tab_ecosistema:
     st.header("🏭 Ecosistema de Baterías: Modelos Más Vendidos")
     st.markdown("*(Análisis basado exclusivamente en la nómina de los modelos más vendidos en Chile)*")
@@ -377,7 +383,6 @@ with tab_ecosistema:
         df_eco_filtrado = df_eco[df_eco[periodo_eco] > 0].copy()
         
         col_m1, col_m2 = st.columns(2)
-        
         with col_m1:
             st.subheader(f"Top 10 Modelos ({periodo_eco})")
             if not df_eco_filtrado.empty:
@@ -405,10 +410,7 @@ with tab_ecosistema:
 
         st.divider()
         st.subheader(f"⚡ Arquitectura Eléctrica y Tensión ({periodo_eco})")
-        st.markdown("*(Distribución de los niveles de voltaje nominales ponderados por volumen de ventas reales)*")
-        
         col_v1, col_v2 = st.columns(2)
-        
         with col_v1:
             if not df_eco_filtrado.empty and 'Voltaje' in df_eco_filtrado.columns:
                 df_voltaje = df_eco_filtrado.groupby('Voltaje')[periodo_eco].sum().reset_index()
@@ -430,7 +432,6 @@ with tab_ecosistema:
         st.divider()
         st.subheader(f"Cadena de Suministro Real ({periodo_eco})")
         col_b1, col_b2 = st.columns(2)
-        
         with col_b1:
             if not df_eco_filtrado.empty:
                 quimica_ventas = df_eco_filtrado.groupby('Química')[periodo_eco].sum().reset_index()
@@ -455,32 +456,23 @@ with tab_buses:
     st.markdown("*(Análisis de capacidad y características técnicas de las baterías en los buses electrificados de la Región Metropolitana)*")
     
     if not df_buses.empty:
-        # Extraemos las métricas principales de los buses
         total_buses = df_buses['Unidades'].sum()
         total_mwh_buses = df_buses['MWh Totales'].sum()
         marca_top = df_buses.groupby('Marca')['Unidades'].sum().idxmax()
         
-        # Tarjetas de Indicadores (KPIs)
         st.markdown("### 📊 Indicadores Clave del Sistema RED")
         kpi_b1, kpi_b2, kpi_b3 = st.columns(3)
-        with kpi_b1: 
-            st.metric("🚌 Total Buses Eléctricos", f"{total_buses:,.0f} u.")
-        with kpi_b2: 
-            st.metric("⚡ Energía Almacenada Total", f"{total_mwh_buses:,.1f} MWh")
-        with kpi_b3: 
-            st.metric("🏆 Marca con Mayor Flota", marca_top)
+        with kpi_b1: st.metric("🚌 Total Buses Eléctricos", f"{total_buses:,.0f} u.")
+        with kpi_b2: st.metric("⚡ Energía Almacenada Total", f"{total_mwh_buses:,.1f} MWh")
+        with kpi_b3: st.metric("🏆 Marca con Mayor Flota", marca_top)
             
         st.divider()
-        
-        # Base de datos cruda de la flota
         st.subheader("📋 Catálogo y Especificaciones de la Flota")
-        # Mostramos las columnas más relevantes, ordenadas de mayor a menor unidad
-        df_buses_mostrar = df_buses[['Marca', 'Modelo de Bus', 'Unidades', 'Capacidad kWh', 'Voltaje Nominal (V DC)', 'Química de la Batería', 'Fabricante Batería']].sort_values(by='Unidades', ascending=False)
+        columnas_existentes = [col for col in ['Marca', 'Modelo de Bus', 'Unidades', 'Capacidad kWh', 'Voltaje Nominal (V DC)', 'Química de la Batería', 'Fabricante Batería'] if col in df_buses.columns]
+        df_buses_mostrar = df_buses[columnas_existentes].sort_values(by='Unidades', ascending=False)
         st.dataframe(df_buses_mostrar, use_container_width=True, hide_index=True)
         
         st.divider()
-        
-        # Gráficos sobre el tamaño de la flota y su volumen de energía (MWh)
         st.subheader("📈 Distribución por Marca y Energía")
         col_bg1, col_bg2 = st.columns(2)
         
@@ -493,7 +485,6 @@ with tab_buses:
             
         with col_bg2:
             mwh_marca = df_buses.groupby('Marca')['MWh Totales'].sum().reset_index().sort_values('MWh Totales', ascending=True)
-            # Redondeamos a un decimal para que el gráfico no se sature de números largos
             mwh_marca['MWh Totales'] = mwh_marca['MWh Totales'].round(1)
             fig_mwh_marca = px.bar(mwh_marca, x='MWh Totales', y='Marca', orientation='h', text='MWh Totales', title="Capacidad Instalada (MWh) por Marca")
             fig_mwh_marca.update_traces(marker_color='#E74C3C', textposition='outside')
@@ -501,22 +492,23 @@ with tab_buses:
             st.plotly_chart(fig_mwh_marca, use_container_width=True)
             
         st.divider()
-        
-        # Análisis de la cadena de suministro en el ecosistema pesado
         st.subheader("🏭 Cadena de Suministro de Baterías (Flota RED)")
         col_bs1, col_bs2 = st.columns(2)
         
         with col_bs1:
-            quimica_buses = df_buses.groupby('Química de la Batería')['Unidades'].sum().reset_index()
-            fig_quimica_b = px.pie(quimica_buses, values='Unidades', names='Química de la Batería', title="Química de Batería (Proporción por Unidades de Bus)", hole=0.4)
-            st.plotly_chart(fig_quimica_b, use_container_width=True)
+            q_col = 'Química de la Batería' if 'Química de la Batería' in df_buses.columns else (df_buses.columns[6] if len(df_buses.columns) > 6 else None)
+            if q_col:
+                quimica_buses = df_buses.groupby(q_col)['Unidades'].sum().reset_index()
+                fig_quimica_b = px.pie(quimica_buses, values='Unidades', names=q_col, title="Química de Batería (Proporción por Unidades)", hole=0.4)
+                st.plotly_chart(fig_quimica_b, use_container_width=True)
             
         with col_bs2:
-            fab_buses = df_buses.groupby('Fabricante Batería')['Unidades'].sum().reset_index().sort_values('Unidades', ascending=True)
-            fig_fab_b = px.bar(fab_buses, x='Unidades', y='Fabricante Batería', orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
-            fig_fab_b.update_traces(marker_color='#8E44AD', textposition='outside')
-            fig_fab_b.update_layout(height=400, yaxis_title="")
-            st.plotly_chart(fig_fab_b, use_container_width=True)
-            
+            f_col = 'Fabricante Batería' if 'Fabricante Batería' in df_buses.columns else (df_buses.columns[7] if len(df_buses.columns) > 7 else None)
+            if f_col:
+                fab_buses = df_buses.groupby(f_col)['Unidades'].sum().reset_index().sort_values('Unidades', ascending=True)
+                fig_fab_b = px.bar(fab_buses, x='Unidades', y=f_col, orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
+                fig_fab_b.update_traces(marker_color='#8E44AD', textposition='outside')
+                fig_fab_b.update_layout(height=400, yaxis_title="")
+                st.plotly_chart(fig_fab_b, use_container_width=True)
     else:
-        st.warning("No se encontró el archivo 'buses RD.xlsx' para procesar la información.")
+        st.warning("No se pudo cargar la información de los buses. Verifica la presencia del archivo CSV o Excel.")
