@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import re
 
 # 1. Configuración inicial
 st.set_page_config(page_title="Dashboard: Mercado Electrificado Chile", layout="wide")
@@ -80,6 +81,29 @@ def cargar_top_modelos():
     
     return df_top
 
+@st.cache_data
+def cargar_buses():
+    df_b = pd.read_excel("buses RD.xlsx")
+    # Limpiamos el nombre de la columna de cantidades (Usualmente 'Unnamed: 2' al importar)
+    if 'Unnamed: 2' in df_b.columns:
+        df_b = df_b.rename(columns={'Unnamed: 2': 'Unidades'})
+        
+    # Extraemos solo los números de los kWh para calcular totales
+    def extraer_kwh(val):
+        if pd.isna(val): return 0.0
+        # Busca el primer patrón numérico incluyendo decimales
+        match = re.search(r'(\d+(?:\.\d+)?)', str(val)) 
+        if match: return float(match.group(1))
+        return 0.0
+        
+    df_b['Capacidad kWh Num'] = df_b['Capacidad kWh'].apply(extraer_kwh)
+    # Calculamos la energía multiplicando capacidad por las unidades
+    df_b['MWh Totales'] = (df_b['Unidades'] * df_b['Capacidad kWh Num']) / 1000
+    
+    df_b['Química de la Batería'] = df_b['Química de la Batería'].astype(str).str.strip()
+    df_b['Fabricante Batería'] = df_b['Fabricante Batería'].astype(str).str.strip()
+    return df_b
+
 # Carga segura de archivos
 try: df_homologados = cargar_homologados()
 except: df_homologados = pd.DataFrame()
@@ -90,16 +114,20 @@ except: df_ventas = pd.DataFrame()
 try: df_top = cargar_top_modelos()
 except: df_top = pd.DataFrame()
 
+try: df_buses = cargar_buses()
+except: df_buses = pd.DataFrame()
+
 colores_tech = {'EV': '#00CC96', 'BEV': '#00CC96', 'PHEV': '#636EFA', 'HEV': '#EF553B'}
 
 
 # 3. Interfaz Principal
-tab_ventas, tab_tecnico, tab_catalogo, tab_insights, tab_ecosistema = st.tabs([
+tab_ventas, tab_tecnico, tab_catalogo, tab_insights, tab_ecosistema, tab_buses = st.tabs([
     "📈 Impacto Ventas", 
     "🔋 Análisis 3CV", 
     "🗂️ Buscador",
     "🧠 Homologado v/s Ventas",
-    "🏭 Ecosistema de Baterías"
+    "🏭 Ecosistema de Baterías",
+    "🚌 RED Movilidad (Buses)"
 ])
 
 # --- PESTAÑA 1: VENTAS REALES POR PERIODO Y TECNOLOGÍA ---
@@ -302,7 +330,6 @@ with tab_catalogo:
             if rango_kwh[0] > 0.0 or rango_kwh[1] < max_kwh:
                 df_mostrar = df_mostrar[(df_mostrar['Capacidad kWh'].notna()) & (df_mostrar['Capacidad kWh'] >= rango_kwh[0]) & (df_mostrar['Capacidad kWh'] <= rango_kwh[1])]
 
-        # --- BOTÓN DE DESCARGA ---
         csv_catalogo = df_mostrar.to_csv(index=False).encode('utf-8')
         st.download_button(label="📥 Exportar Resultados Filtrados a CSV", data=csv_catalogo, file_name="catalogo_3cv_filtrado.csv", mime="text/csv")
 
@@ -317,7 +344,7 @@ with tab_catalogo:
 
 # --- PESTAÑA 4: INSIGHTS ESTRATÉGICOS ---
 with tab_insights:
-    st.header("Cruce de Homologaciones vs Ventas")
+    st.header("🧠 Cruce de Homologaciones vs Ventas")
     if not df_ventas.empty and not df_homologados.empty:
         homologados_count = df_homologados[df_homologados['Tipo'] == 'EV'].groupby('Marca').size().reset_index(name='Modelos Homologados')
         ventas_ev = df_ventas[df_ventas['Tipo (EV/PHEV/HEV)'] == 'EV'].groupby('Marca')['Total Acumulado'].sum().reset_index()
@@ -421,3 +448,75 @@ with tab_ecosistema:
                     fig_fab.update_traces(marker_color='#8E44AD')
                     fig_fab.update_layout(yaxis_title="", height=450)
                     st.plotly_chart(fig_fab, use_container_width=True)
+
+# --- PESTAÑA 6: RED MOVILIDAD (BUSES) ---
+with tab_buses:
+    st.header("🚌 Flota de Transporte Público: RED Movilidad (Santiago)")
+    st.markdown("*(Análisis de capacidad y características técnicas de las baterías en los buses electrificados de la Región Metropolitana)*")
+    
+    if not df_buses.empty:
+        # Extraemos las métricas principales de los buses
+        total_buses = df_buses['Unidades'].sum()
+        total_mwh_buses = df_buses['MWh Totales'].sum()
+        marca_top = df_buses.groupby('Marca')['Unidades'].sum().idxmax()
+        
+        # Tarjetas de Indicadores (KPIs)
+        st.markdown("### 📊 Indicadores Clave del Sistema RED")
+        kpi_b1, kpi_b2, kpi_b3 = st.columns(3)
+        with kpi_b1: 
+            st.metric("🚌 Total Buses Eléctricos", f"{total_buses:,.0f} u.")
+        with kpi_b2: 
+            st.metric("⚡ Energía Almacenada Total", f"{total_mwh_buses:,.1f} MWh")
+        with kpi_b3: 
+            st.metric("🏆 Marca con Mayor Flota", marca_top)
+            
+        st.divider()
+        
+        # Base de datos cruda de la flota
+        st.subheader("📋 Catálogo y Especificaciones de la Flota")
+        # Mostramos las columnas más relevantes, ordenadas de mayor a menor unidad
+        df_buses_mostrar = df_buses[['Marca', 'Modelo de Bus', 'Unidades', 'Capacidad kWh', 'Voltaje Nominal (V DC)', 'Química de la Batería', 'Fabricante Batería']].sort_values(by='Unidades', ascending=False)
+        st.dataframe(df_buses_mostrar, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Gráficos sobre el tamaño de la flota y su volumen de energía (MWh)
+        st.subheader("📈 Distribución por Marca y Energía")
+        col_bg1, col_bg2 = st.columns(2)
+        
+        with col_bg1:
+            buses_marca = df_buses.groupby('Marca')['Unidades'].sum().reset_index().sort_values('Unidades', ascending=True)
+            fig_buses_marca = px.bar(buses_marca, x='Unidades', y='Marca', orientation='h', text='Unidades', title="Cantidad de Buses por Marca")
+            fig_buses_marca.update_traces(marker_color='#F1C40F', textposition='outside')
+            fig_buses_marca.update_layout(height=400, yaxis_title="")
+            st.plotly_chart(fig_buses_marca, use_container_width=True)
+            
+        with col_bg2:
+            mwh_marca = df_buses.groupby('Marca')['MWh Totales'].sum().reset_index().sort_values('MWh Totales', ascending=True)
+            # Redondeamos a un decimal para que el gráfico no se sature de números largos
+            mwh_marca['MWh Totales'] = mwh_marca['MWh Totales'].round(1)
+            fig_mwh_marca = px.bar(mwh_marca, x='MWh Totales', y='Marca', orientation='h', text='MWh Totales', title="Capacidad Instalada (MWh) por Marca")
+            fig_mwh_marca.update_traces(marker_color='#E74C3C', textposition='outside')
+            fig_mwh_marca.update_layout(height=400, yaxis_title="", xaxis_title="MWh Estimados")
+            st.plotly_chart(fig_mwh_marca, use_container_width=True)
+            
+        st.divider()
+        
+        # Análisis de la cadena de suministro en el ecosistema pesado
+        st.subheader("🏭 Cadena de Suministro de Baterías (Flota RED)")
+        col_bs1, col_bs2 = st.columns(2)
+        
+        with col_bs1:
+            quimica_buses = df_buses.groupby('Química de la Batería')['Unidades'].sum().reset_index()
+            fig_quimica_b = px.pie(quimica_buses, values='Unidades', names='Química de la Batería', title="Química de Batería (Proporción por Unidades de Bus)", hole=0.4)
+            st.plotly_chart(fig_quimica_b, use_container_width=True)
+            
+        with col_bs2:
+            fab_buses = df_buses.groupby('Fabricante Batería')['Unidades'].sum().reset_index().sort_values('Unidades', ascending=True)
+            fig_fab_b = px.bar(fab_buses, x='Unidades', y='Fabricante Batería', orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
+            fig_fab_b.update_traces(marker_color='#8E44AD', textposition='outside')
+            fig_fab_b.update_layout(height=400, yaxis_title="")
+            st.plotly_chart(fig_fab_b, use_container_width=True)
+            
+    else:
+        st.warning("No se encontró el archivo 'buses RD.xlsx' para procesar la información.")
