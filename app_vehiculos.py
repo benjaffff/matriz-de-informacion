@@ -92,26 +92,6 @@ except: df_top = pd.DataFrame()
 
 colores_tech = {'EV': '#00CC96', 'BEV': '#00CC96', 'PHEV': '#636EFA', 'HEV': '#EF553B'}
 
-# --- INDICADORES TOTALES (KPIS FIJOS SUPERIORES) ---
-if not df_ventas.empty:
-    st.markdown("### 📊 Indicadores Clave del Parque Circulante")
-    kpi1, kpi2, kpi3 = st.columns(3)
-    
-    total_unidades = df_ventas['Total Acumulado'].sum()
-    
-    # Estimación global de energía acumulada en las calles
-    homologados_kwh_kpi = df_homologados.groupby(['Marca', 'Tipo'])['Capacidad kWh'].mean().reset_index()
-    ventas_kpi = df_ventas.rename(columns={'Tipo (EV/PHEV/HEV)': 'Tipo'})
-    cruce_kpi = pd.merge(ventas_kpi, homologados_kwh_kpi, on=['Marca', 'Tipo'], how='inner')
-    total_mwh_pais = (cruce_kpi['Total Acumulado'] * cruce_kpi['Capacidad kWh']).sum() / 1000
-
-    with kpi1:
-        st.metric(label="🚗 Total Vehículos Electrificados Vendidos", value=f"{total_unidades:,.0f} u.")
-    with kpi2:
-        st.metric(label="⚡ Almacenamiento Móvil Estimado", value=f"{total_mwh_pais:,.1f} MWh")
-    with kpi3:
-        st.metric(label="📋 Modelos Certificados en el 3CV", value=f"{len(df_homologados)} modelos")
-    st.divider()
 
 # 3. Interfaz Principal
 tab_ventas, tab_tecnico, tab_catalogo, tab_insights, tab_ecosistema = st.tabs([
