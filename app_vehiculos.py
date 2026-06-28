@@ -337,7 +337,7 @@ with tab_catalogo:
 
 # --- PESTAÑA 4: INSIGHTS ESTRATÉGICOS ---
 with tab_insights:
-    st.header("🧠 Insights Estratégicos: Cruce de Homologaciones vs Ventas")
+    st.header("Cruce de Homologaciones vs Ventas")
     if not df_ventas.empty and not df_homologados.empty:
         homologados_count = df_homologados[df_homologados['Tipo'] == 'EV'].groupby('Marca').size().reset_index(name='Modelos Homologados')
         ventas_ev = df_ventas[df_ventas['Tipo (EV/PHEV/HEV)'] == 'EV'].groupby('Marca')['Total Acumulado'].sum().reset_index()
