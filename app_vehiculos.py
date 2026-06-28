@@ -118,7 +118,7 @@ tab_ventas, tab_tecnico, tab_catalogo, tab_insights, tab_ecosistema = st.tabs([
     "📈 Impacto Ventas", 
     "🔋 Análisis 3CV", 
     "🗂️ Buscador",
-    "🧠 Insights Estratégicos",
+    "🧠 Homologado v/s Ventas",
     "🏭 Ecosistema de Baterías"
 ])
 
