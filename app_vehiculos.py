@@ -75,7 +75,6 @@ def cargar_top_modelos():
     df_top['Marca'] = df_top['Marca'].astype(str).str.upper().str.strip()
     df_top['Modelo'] = df_top['Modelo'].astype(str).str.upper().str.strip()
     df_top['kWh fabricante'] = pd.to_numeric(df_top['kWh fabricante'], errors='coerce')
-    df_top['Voltaje'] = df_top['Voltaje'].astype(str).str.upper().str.strip().replace('NAN', 'DESCONOCIDO')
     df_top['Química'] = df_top['Química'].astype(str).str.upper().str.strip().replace('NAN', 'DESCONOCIDA')
     df_top['Fabricante Batería'] = df_top['Fabricante Batería'].astype(str).str.upper().str.strip().replace('NAN', 'DESCONOCIDO')
     
@@ -83,7 +82,6 @@ def cargar_top_modelos():
 
 @st.cache_data
 def cargar_buses():
-    # Intentamos cargar como Excel clásico o como el CSV mapeado de la investigación
     try:
         df_b = pd.read_excel("buses RD.xlsx")
     except:
@@ -92,7 +90,6 @@ def cargar_buses():
         except:
             return pd.DataFrame()
             
-    # Mapeo posicional robusto: La tercera columna siempre representa la cantidad de unidades
     if len(df_b.columns) > 2:
         df_b = df_b.rename(columns={df_b.columns[2]: 'Unidades'})
         
@@ -110,7 +107,6 @@ def cargar_buses():
     else:
         df_b['MWh Totales'] = 0.0
     
-    # Estandarización de textos y remoción de espacios
     for col in ['Química de la Batería', 'Fabricante Batería', 'Marca', 'Modelo de Bus']:
         if col in df_b.columns:
             df_b[col] = df_b[col].astype(str).str.strip()
@@ -409,27 +405,6 @@ with tab_ecosistema:
             st.plotly_chart(fig_energia, use_container_width=True)
 
         st.divider()
-        st.subheader(f"⚡ Arquitectura Eléctrica y Tensión ({periodo_eco})")
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            if not df_eco_filtrado.empty and 'Voltaje' in df_eco_filtrado.columns:
-                df_voltaje = df_eco_filtrado.groupby('Voltaje')[periodo_eco].sum().reset_index()
-                df_voltaje = df_voltaje[df_voltaje['Voltaje'] != 'DESCONOCIDO'].sort_values(by=periodo_eco, ascending=False)
-                if not df_voltaje.empty:
-                    fig_v = px.bar(df_voltaje, x='Voltaje', y=periodo_eco, text=periodo_eco, color='Voltaje', title="Modelos en Circulación por Nivel de Voltaje")
-                    fig_v.update_traces(textposition='outside')
-                    fig_v.update_layout(yaxis_title="Unidades Vendidas", showlegend=False, height=400)
-                    st.plotly_chart(fig_v, use_container_width=True)
-                else: st.info("Sin registros de voltaje legibles.")
-
-        with col_v2:
-            st.markdown("💡 **Importancia de la Arquitectura de Voltaje para aplicaciones de Red y Segunda Vida:**")
-            st.markdown("""
-            * **Compatibilidad V2G:** Los vehículos con arquitecturas de alta tensión exigen parámetros específicos de acoplamiento front-end en cargadores bidireccionales.
-            * **Segunda Vida:** Agrupar celdas retiradas procedentes de un mismo umbral de voltaje simplifica las tareas de reconfiguración de packs para sistemas de almacenamiento estacionario.
-            """)
-
-        st.divider()
         st.subheader(f"Cadena de Suministro Real ({periodo_eco})")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
@@ -506,7 +481,7 @@ with tab_buses:
             f_col = 'Fabricante Batería' if 'Fabricante Batería' in df_buses.columns else (df_buses.columns[7] if len(df_buses.columns) > 7 else None)
             if f_col:
                 fab_buses = df_buses.groupby(f_col)['Unidades'].sum().reset_index().sort_values('Unidades', ascending=True)
-                fig_fab_b = px.bar(fab_buses, x='Unidades', y=f_col, orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
+                fig_fab_b = px.bar(fab_buses, x='Unidades', y='f_col', orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
                 fig_fab_b.update_traces(marker_color='#8E44AD', textposition='outside')
                 fig_fab_b.update_layout(height=400, yaxis_title="")
                 st.plotly_chart(fig_fab_b, use_container_width=True)
