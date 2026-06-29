@@ -75,6 +75,7 @@ def cargar_top_modelos():
     df_top['Marca'] = df_top['Marca'].astype(str).str.upper().str.strip()
     df_top['Modelo'] = df_top['Modelo'].astype(str).str.upper().str.strip()
     df_top['kWh fabricante'] = pd.to_numeric(df_top['kWh fabricante'], errors='coerce')
+    df_top['Voltaje'] = df_top['Voltaje'].astype(str).str.upper().str.strip().replace('NAN', 'DESCONOCIDO')
     df_top['Química'] = df_top['Química'].astype(str).str.upper().str.strip().replace('NAN', 'DESCONOCIDA')
     df_top['Fabricante Batería'] = df_top['Fabricante Batería'].astype(str).str.upper().str.strip().replace('NAN', 'DESCONOCIDO')
     
@@ -480,8 +481,9 @@ with tab_buses:
         with col_bs2:
             f_col = 'Fabricante Batería' if 'Fabricante Batería' in df_buses.columns else (df_buses.columns[7] if len(df_buses.columns) > 7 else None)
             if f_col:
+                # CORRECCIÓN DE ERROR APLICADA AQUÍ ('f_col' sin comillas)
                 fab_buses = df_buses.groupby(f_col)['Unidades'].sum().reset_index().sort_values('Unidades', ascending=True)
-                fig_fab_b = px.bar(fab_buses, x='Unidades', y='f_col', orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
+                fig_fab_b = px.bar(fab_buses, x='Unidades', y=f_col, orientation='h', text='Unidades', title="Principales Fabricantes de Celdas")
                 fig_fab_b.update_traces(marker_color='#8E44AD', textposition='outside')
                 fig_fab_b.update_layout(height=400, yaxis_title="")
                 st.plotly_chart(fig_fab_b, use_container_width=True)
