@@ -408,20 +408,6 @@ with tab_ecosistema:
             fig_energia.update_layout(height=450, yaxis_title="MWh Estimados")
             st.plotly_chart(fig_energia, use_container_width=True)
 
-        st.divider()
-        st.subheader(f"⚡ Arquitectura Eléctrica y Tensión ({periodo_eco})")
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            if not df_eco_filtrado.empty and 'Voltaje' in df_eco_filtrado.columns:
-                df_voltaje = df_eco_filtrado.groupby('Voltaje')[periodo_eco].sum().reset_index()
-                df_voltaje = df_voltaje[df_voltaje['Voltaje'] != 'DESCONOCIDO'].sort_values(by=periodo_eco, ascending=False)
-                if not df_voltaje.empty:
-                    fig_v = px.bar(df_voltaje, x='Voltaje', y=periodo_eco, text=periodo_eco, color='Voltaje', title="Modelos en Circulación por Nivel de Voltaje")
-                    fig_v.update_traces(textposition='outside')
-                    fig_v.update_layout(yaxis_title="Unidades Vendidas", showlegend=False, height=400)
-                    st.plotly_chart(fig_v, use_container_width=True)
-                else: st.info("Sin registros de voltaje legibles.")
-
         with col_v2:
             st.markdown("💡 **Importancia de la Arquitectura de Voltaje para aplicaciones de Red y Segunda Vida:**")
             st.markdown("""
